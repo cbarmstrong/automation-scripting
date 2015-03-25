@@ -1319,7 +1319,7 @@ sub install {
         if($size==0){ unlink("$s_home/properties.d/$file.properties"); }
     }
     print "* * * * * $s_home/Perl/isaac >/dev/null 2>&1\n";
-    print "00,20,40 * * * * $s_home/Perl/commandUtil.pl --opts tasks=alerting >/dev/null 2>&1\n";
+    print "00,20,40 * * * * export LANG=$ENV{LANG}; $s_home/Perl/commandUtil.pl --opts tasks=alerting >/dev/null 2>&1\n";
 }
 
 sub discoverOPMN {
