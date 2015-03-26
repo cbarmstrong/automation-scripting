@@ -1,0 +1,262 @@
+###########################################
+#                                         #
+# Custom functions                        #
+#                                         #
+# compareDict - Compares 2 dictionaries   #
+# expand - Expands a list/dictionary that #
+#          may contain combinations of    #
+#          lists or dictionaries          #
+#                                         #
+# Date    Who    What                     #
+# Apr08   Colin  Create script            #
+#                                         #
+# Updated Dec 13 by Gary and Stephen      #
+#                                         #
+###########################################
+
+wasVer=6
+import os
+import sys
+from time import strftime, mktime, localtime
+try:
+    import java
+    ls = java.lang.System.getProperty('line.separator')
+except Exception, ex1:
+    wasVer=5
+    ls = "\n"
+
+parms={}
+parms['log_level']=3
+
+#Function to write text to log and print it to screen if greater than current loglevel
+
+def log(text,level=3):
+    global parms
+    level_names = ['audit','error','warn ','info ','trace']
+    ld = strftime("%d-%m-%Y")
+    lt = strftime("%H:%M:%S")
+    if level > parms['log_level']:return
+    my_file = open(parms['script_home']+'/logs/'+parms['script_name']+'/'+parms['script_name']+'.'+ld+'.log','a')
+    my_file.write(lt+" - *** "+level_names[level]+" *** - "+text+"\n")
+    my_file.close()
+    if level >2: print lt+" - *** "+level_names[level]+" *** - "+text
+    else: print >> sys.stderr, lt+" - *** "+level_names[level]+" *** - "+text
+
+for i in range(len(sys.argv)):
+    try:
+        if sys.argv[i].find("=")<0: continue
+        key=sys.argv[i].split("=")[0]
+        val=sys.argv[i].split("=")[1]
+        parms[key]=val
+    except Exception, ex1:
+        print "Failed to eval '"+sys.argv[i]+"'"
+        print str(ex1)
+
+print parms
+required_list.append('script_home')
+required_list.append('script_name')
+required_list.append('script_type')
+for required in required_list:
+    if(required not in parms.keys()):
+        log(required+" argument not supplied")
+        sys.exit(8)
+
+try:
+    import commands
+except:
+    log("Commands module not loaded")
+
+log("Setting up functions...")
+
+def getNetVal(keyword, port='12345'):
+    log("Getting value for "+keyword+" using port "+str(port))
+    return commands.getstatusoutput(parms['script_home']+"/Perl/getNetVal.pl --opts port="+str(port)+",requestedKey=keyword | grep keyword= | cut -d= -f2")[1]
+
+#Function to check if dmgr is up
+
+def checkDmgr():
+    try:
+        AdminControl.getNode()
+    except:
+        ( kind, value ) = sys.exc_info()[ :2 ]
+        ( kind, value ) = str( kind ), str( value )
+        log("Deployment manager appears to be down",1)
+        #short_error = kind.split(".")[-1]
+        notify(parms['cell'],"dmgr_failed",1)
+        sys.exit(1)
+    else:
+        log("Connected to deployment manager")
+        global cell_name
+        log("Getting cell...",4)
+        cell_name=AdminControl.getCell()
+        log("Connected to cell "+cell_name,4)
+
+# This is to identify what exists in this cell and save the info
+# in some variables to be used later in other modules
+
+def gatherInfo():
+    global cell_id, cell_name, nodes, servers
+    # Identify cell
+    cell_id=AdminConfig.list('Cell')
+    log('Cell ID: '+cell_id,4)
+    log("WS001I Executing for "+cell_name)
+    # Identify Nodes
+    #   List of Node IDs
+    #   List of Node Names
+    log("WS008I Identifying Nodes")
+    if 'nodes' in parms.keys(): theseNodes=parms["nodes"].split(',')
+    else: theseNodes = []
+    log("WS023I Filtering on "+str(theseNodes))
+    nodes=[]
+    for node_id in AdminConfig.list('Node',cell_id).split(ls):
+       node={}
+       node['id']=node_id
+       node['name']=AdminConfig.showAttribute(node['id'],'name')
+       if theseNodes == [] or node['name'] in theseNodes: nodes.append(node)
+    servers=[]
+    for node in nodes:
+       log("WS009I Identifying Servers")
+       server_ids=AdminConfig.list('Server',node['id']).split(ls)
+       for server_id in server_ids:
+          if AdminConfig.showAttribute(server_id,'serverType') == 'WEB_SERVER': continue
+          server={}
+          server['id']=server_id
+          log('Server id set to: '+server['id'],4)
+          server['name']=AdminConfig.showAttribute(server_id,'name')
+          log('Servername set to: '+server['name'],4)
+          server['node_id']=node['id']
+          log('Server id set to: '+server['node_id'],4)
+          server['node']=AdminConfig.showAttribute(node['id'],'name')
+          log('Nodename set to: '+server['node'],4)
+          server['state']='UNKNOWN'
+          log('State set to '+server['state'],4)
+          servers.append(server)
+          log("WS010I Server "+server['name']+" detected")
+
+
+# Function to set log level
+
+def setLevel(lv):
+   global parms
+   if parms['log_level']!=lv:
+      parms['log_level']=lv
+      log("LG001I Log level set to: " + str(parms['log_level']))
+   else: log("Log level unchanged at " +str(parms['log_level']),4)
+
+#Function to send notifications to be picked up by isaac
+
+def notify(group="jython", type="parmsfailed", polarity=1):
+    rt='%(tm)f' % {'tm': mktime(localtime())}
+    my_file = open(parms['script_home']+'/notifications/'+str(rt)+'.notification','a')
+    my_file.write(str(rt)+":"+group+":"+type+":"+str(polarity)+"\n")
+    my_file.close()
+    if polarity == 0: log("Notification sent: ("+group+":"+type+":"+str(polarity)+")")
+    else: log("Notification sent: ("+group+":"+type+":"+str(polarity)+")",2)
+
+# This function compares two dictionarys
+# to see if they're the same.
+# It just sorts them and compares keys/values
+
+def compareDict(dict1,dict2):
+    log("Enter compareDict",4)
+    d1Keys=dict1.keys()
+    d1Keys.sort() 
+    log(str(d1Keys),4)
+    d2Keys=dict2.keys()
+    d2Keys.sort()
+    log(str(d2Keys),4)
+    if d1Keys != d2Keys:
+        log("Exit compareDict - False",4)
+        return 0
+    for key in dict1.keys():
+        log("Comparing '"+str(dict1[key])+"' to '"+str(dict2[key])+"'",4)
+        if dict1[key]!=dict2[key]:
+            log("Exit compareDict - False",4)
+            return 0
+    log("Exit compareDict - True",4)
+    return 1
+
+# expand prints out the contents of a dictionary or list
+# hopefully in a nice format with indentation.
+
+def expand(nested,indent=''):
+    indent=indent+"  "
+    log(str(nested),4)
+    if str(type(nested))=='org.python.core.PyList':
+        print indent+"["
+        print "#Example:"
+        print "# 'item1', 'item2' , ... , 'itemn'"
+        print "# --------------------------------"
+        for item in nested:
+            expand(item,indent)
+        print indent+"]",
+    elif str(type(nested))=='org.python.core.PyDictionary':
+        print indent+"{"
+        print "#Example:"
+        print "# 'key1': 'value1'"
+        print "# 'key2': 'value2'"
+        print "#-----------------"
+        for item in nested.keys():
+            print indent+"'"+item+"': ",
+            expand(nested[item],indent)
+        print indent+"}",
+    elif str(type(nested))=='org.python.core.PyString':
+        print "'"+nested+"'",
+    else:
+        error("Unknown type "+str(type(nested)))
+    if indent!='  ': print ","
+    else: print ""
+
+def getAdminPW():
+    global parms
+    log("Executing: "+parms['script_home']+"/shell/pwRecovery.sh "+parms['domain_home']+" password",4)
+    return commands.getstatusoutput(parms['script_home']+"/shell/pwRecovery.sh "+parms['domain_home']+" password")[1]
+
+def getAdminUser():
+    global parms
+    log("Executing: "+parms['script_home']+"/shell/pwRecovery.sh "+parms['domain_home']+" username",4)
+    return commands.getstatusoutput(parms['script_home']+"/shell/pwRecovery.sh "+parms['domain_home']+" username")[1]
+
+def getServerAttribute(attrRoot, attr):
+    try:
+        cd(attrRoot)
+    except:
+        log("Error navigating to: " + attrRoot)
+        return
+    try:
+        a=get(attr)
+    except:
+        log("Error retrieving attribute: " + attr)
+        return ""
+    return a
+
+def connect_to_server(cstring,user,pw):
+    global parms
+    try:
+        connect(user,pw,cstring)
+        serverRuntime()
+        parms['server_name']=get('Name')
+        return true
+    except Exception, Ex1:
+        notify(parms['group_name'],"jvmdown",1)
+        log(str(Ex1))
+        return false
+
+# This is always exectuted when importing this jython script
+# These variables are set here but will be updated by other functions in this script
+
+if parms['script_type'] == "was":
+    # These are set by checkDmgr() if the JVM is up
+    log("Performing WebSphere setup")
+    cell_name="unknown"
+ 
+    checkDmgr()
+    log("Admin connection checked",4)
+    gatherInfo()
+    log("Information Gathered",4)
+
+if parms['script_type'] == "wls":
+    parms['domain_name']=parms['domain_home'].split('/')[-1]
+    log("Performing WebLogic setup")
+
+setLevel(float(parms['log_level']))
