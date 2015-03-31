@@ -400,7 +400,7 @@ sub mail {
     my $cmd = $parms->{current_cmd};
     $cmd->{attach_files} = [ $cmd->{attach_file} ] if $cmd->{attach_file};
     $cmd->{hostname} = qx/uname -n/ unless defined $cmd->{hostname};
-    my $tmp = { mail_server => "remacentma01.server.rbsgrp.net"
+    my $tmp = { mail_server => ""
                 mail_ssl    => 0,
                 mail_user   => undef,
                 mail_pw     => undef  }; getProperty($tmp);
