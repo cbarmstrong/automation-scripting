@@ -16,7 +16,6 @@ use File::Spec;
 use POSIX ":sys_wait_h";
 use Data::Dumper;
 use IO::Socket::INET;
-use Net::SMTP;
 use MIME::Base64 qw( encode_base64 );
 
 $VERSION     = 1.00;
@@ -26,7 +25,6 @@ $VERSION     = 1.00;
                   &AwaitCompletion $m_home $s_home $s_name &getNetParms &sendNetParms &mail &parseDate );
 %EXPORT_TAGS = ( "ALL" => [qw(&getListProps &logger &getProperty &writeProperty &alert &calculateMA &notify &mail &mkdir_recursive
                               &gridPrint &AwaitCompletion $m_home $s_home $s_name &getNetParms &sendNetParms &parseDate)] );
-
 
 our $s_home = dirname(dirname(File::Spec->rel2abs($0)));
 our $s_name = basename($0);
@@ -402,7 +400,10 @@ sub mail {
     my $cmd = $parms->{current_cmd};
     $cmd->{attach_files} = [ $cmd->{attach_file} ] if $cmd->{attach_file};
     $cmd->{hostname} = qx/uname -n/ unless defined $cmd->{hostname};
-    my $tmp = { mail_server => "remacentma01.server.rbsgrp.net" }; getProperty($tmp);
+    my $tmp = { mail_server => "remacentma01.server.rbsgrp.net"
+                mail_ssl    => 0,
+                mail_user   => undef,
+                mail_pw     => undef  }; getProperty($tmp);
     $cmd->{rcpt} = [ $cmd->{to} ] if defined $cmd->{to};
     return 0 unless defined $cmd->{rcpt};
     if($cmd->{mail_file} and -r $cmd->{mail_file}){
@@ -410,7 +411,18 @@ sub mail {
         $cmd->{mail}.=$_ while(<$mfh>);
         close($mfh);
     }
-    my $smtp = Net::SMTP->new($tmp->{mail_server}, Timeout => 60);
+    my $smtp;
+    if($tmp->{mail_ssl}){
+        require Net::SMTP::TLS;
+        Net::SMTP::TLS->import();
+        $smtp = Net::SMTP::TLS->new($tmp->{mail_server}, Timeout => 60, 
+                                                         User => $tmp->{mail_user}, 
+                                                         Password => $tmp->{mail_password});
+    } else{
+        require Net::SMTP;
+        Net::SMTP->import();
+        $smtp = Net::SMTP->new($tmp->{mail_server}, Timeout => 60);
+    }
     $smtp->mail($cmd->{hostname});
     $smtp->to(@{$cmd->{rcpt}});
     $smtp->data();
