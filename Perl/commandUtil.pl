@@ -6,7 +6,6 @@ use File::Basename;
 use Getopt::Long;
 use lib dirname($0)."/Modules/lib/site_perl/5.8.8/";
 use lib dirname($0)."/Modules";
-use Term::Menu;
 use MWUtils ":ALL";
 use MWActions ":ALL";
 use MWBuilders ":ALL";
